@@ -1,27 +1,66 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Any
 
-"""
-Data models for the My Env Environment.
+@dataclass
+class EnterpriseOpsAction:
+    """The command issued by the AI HR Operations Coordinator."""
+    command: str
 
-The my_env environment is a simple test environment that echoes back messages.
-"""
+@dataclass
+class EnterpriseOpsObservation:
+    """What the agent sees after taking an action."""
+    command_output: str
+    system_status_summary: str  # Replaces cluster_status (shows tickets, emails, calendar)
+    active_alerts: List[str]    # PagerDuty-style HR/IT compliance alerts
+    steps_taken: int
+    max_steps: int
+    hint: str = ""
+    done: bool = False
+    reward: float = 0.0
 
-from openenv.core.env_server.types import Action, Observation
-from pydantic import Field
+@dataclass
+class EnterpriseOpsState:
+    """The internal state tracker for the environment."""
+    episode_id: str
+    step_count: int
+    current_phase: str = "discovery" # discovery, offer, escalation, close, verification
+    difficulty: float = 0.0
+    candidate_tier: str = ""
+    is_resolved: bool = False
+    cumulative_reward: float = 0.0
+    curriculum_stats: dict = field(default_factory=dict)
 
+# --- Adversarial Scenario Models (Direct port from Kube SRE, adapted for HR) ---
 
-class MyAction(Action):
-    """Action for the My Env environment - just a message to echo."""
+@dataclass
+class IncidentStep:
+    """One mutation in a multi-step chaos incident (e.g., policy drift, ticket flood)."""
+    action: str              # the chaos injection command
+    effect: str              # what this causes
+    order: int               
+    is_root_cause: bool      
+    depends_on: List[int] = field(default_factory=list)
 
-    message: str = Field(..., description="Message to echo back")
+@dataclass
+class ScenarioSpec:
+    """Base class for an episode scenario."""
+    name: str
+    failure_type: str        # e.g., 'policy_drift', 'competing_offer'
+    department: str          # Replaces namespace
+    role_target: str         # Replaces deployment
+    root_cause: str
+    difficulty: float
+    alert_message: str
+    correct_fix_description: str
+    params: dict = field(default_factory=dict)
 
-
-class MyObservation(Observation):
-    """Observation from the My Env environment - the echoed message."""
-
-    echoed_message: str = Field(default="", description="The echoed message")
-    message_length: int = Field(default=0, description="Length of the echoed message")
+@dataclass
+class AdversarialScenarioSpec(ScenarioSpec):
+    """Multi-step incident designed by the Tier 5 LLM Judge."""
+    steps: List[IncidentStep] = field(default_factory=list)
+    diagnosis_steps: List[str] = field(default_factory=list)
+    fix_steps: List[str] = field(default_factory=list)
+    verify_steps: List[str] = field(default_factory=list)
+    red_herrings: List[str] = field(default_factory=list)
+    expected_observation_hints: List[str] = field(default_factory=list)
+    expected_diagnostic_path: List[str] = field(default_factory=list)
